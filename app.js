@@ -4,6 +4,7 @@
 var ajax = require('request'),
     async = require('async'),
     db = require('./lib/database'),
+    makeAPI = require('./lib/makeapi'),
     express = require('express'), 
     fs = require('fs'),
     habitat = require('habitat'),
@@ -18,6 +19,7 @@ habitat.load();
 
 var app = express(),
     databaseAPI = db(),
+    make = makeAPI(),
     env = new habitat(),
     nunjucksEnv = new nunjucks.Environment(new nunjucks.FileSystemLoader('views'));
 
@@ -67,12 +69,12 @@ app.get('/projects/:name', function(req, res) {
 app.get('/myprojects',
   middleware.checkForPersonaAuth,
   function(req, res) {
-    databaseAPI.findAllByUser(req.session.email, function(err, results) {
+    make.search({withAuthor: req.session.email, withTags: ["thimble"]}, function(results) {
       var projects = [],
-          id;
+          url;
       results.forEach(function(result){
-        id = result.id;
-        projects.push(env.get('HOSTNAME') + "/remix/" + id + "<a href='/remix/"+id+"'>view</a><a href='/remix/"+id+"/edit'>edit</a>");
+        url = result.url;
+        projects.push(url + "<a href='"+url+"'>view</a><a href='"+url+"/edit'>edit</a>");
       });
       res.render('gallery.html', {title: 'User Projects', projects: projects});
     });
@@ -112,6 +114,7 @@ app.post('/publish',
          middleware.checkForOriginalPage,
          middleware.bleachData(env.get("BLEACH_ENDPOINT")),
          middleware.publishData(databaseAPI),
+         middleware.publishMake(make, env.get('HOSTNAME')),
   function(req, res) {
     res.json({ 'published-url' : env.get('HOSTNAME') + '/' + req.publishId });
     res.end();
