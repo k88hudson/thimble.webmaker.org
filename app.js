@@ -4,10 +4,10 @@
 var ajax = require('request'),
     async = require('async'),
     db = require('./lib/database'),
-    makeAPI = require('./lib/makeapi'),
     express = require('express'), 
     fs = require('fs'),
     habitat = require('habitat'),
+    makeAPI = require('./lib/makeapi'),
     middleware = require( "./lib/middleware"),
     mysql = require('mysql'),
     nunjucks = require('nunjucks'),
@@ -19,8 +19,8 @@ habitat.load();
 
 var app = express(),
     databaseAPI = db(),
-    make = makeAPI(),
     env = new habitat(),
+    make = makeAPI(env.get("MAKE_ENDPOINT")),
     nunjucksEnv = new nunjucks.Environment(new nunjucks.FileSystemLoader('views'));
 
 nunjucksEnv.express(app);
@@ -113,10 +113,10 @@ app.post('/publish',
          middleware.checkForPublishData,
          middleware.checkForOriginalPage,
          middleware.bleachData(env.get("BLEACH_ENDPOINT")),
-         middleware.publishData(databaseAPI),
-         middleware.publishMake(make, env.get('HOSTNAME')),
+         middleware.publishData(databaseAPI, env.get('HOSTNAME')),
+         middleware.publishMake(make),
   function(req, res) {
-    res.json({ 'published-url' : env.get('HOSTNAME') + '/' + req.publishId });
+    res.json({ 'published-url' : req.publishUrl });
     res.end();
   }
 );
