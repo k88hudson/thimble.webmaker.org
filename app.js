@@ -54,7 +54,11 @@ app.get('/projects', function(req, res) {
     var projects = [];
     files.forEach( function(e) {
       var id = e.replace('.html','');
-      projects.push(id+"<a href='/projects/"+id+"'>edit</a><a href='/"+id+".html'>view</a>");
+      projects.push({
+        title: id,
+        edit: id,
+        view: "/" + id + ".html"
+      });
     });
     res.render('gallery.html', {location: "projects", title: 'Learning Projects', projects: projects});
   });
@@ -73,8 +77,12 @@ app.get('/myprojects',
       var projects = [],
           url;
       results.forEach(function(result){
-        url = result.url;
-        projects.push(url + "<a href='"+url+"'>view</a><a href='"+url+"/edit'>edit</a>");
+        url = require('querystring').unescape( result.url );
+        projects.push({
+          title: url,
+          edit: url + "/edit",
+          view: url
+        });
       });
       res.render('gallery.html', {title: 'User Projects', projects: projects});
     });
