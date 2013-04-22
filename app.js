@@ -73,7 +73,7 @@ app.get('/projects/:name', function(req, res) {
 app.get('/myprojects',
   middleware.checkForPersonaAuth,
   function(req, res) {
-    make.search({withAuthor: req.session.email, withTags: ["thimble"]}, function(results) {
+    make.search({author: req.session.email}, function(results) {
       var projects = [],
           url;
       results.forEach(function(result){
