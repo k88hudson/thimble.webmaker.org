@@ -1,0 +1,70 @@
+
+  <link media="screen" rel="stylesheet" href="{{HOSTNAME}}/stylesheets/makedetails.css">
+  <div class="make-details-page">
+    <div class="make-details hide">
+      <iframe id="details-iframe" src="{{AUDIENCE}}/details/?url={{URL}}"></iframe>
+    </div>
+    <div class="make-bar">
+      <div class="wrapper">
+        <span class="logospan">
+          <a class="make-link" href="#">
+            <img src="{{HOSTNAME}}/img/logo_small.png" alt="Mozilla Webmaker">
+          </a>
+          <span class="made-with">
+            Made with <a class="make-link" href="//webmaker.org">Webmaker</a>
+          </span>
+        </span>
+        <span class="expand-collapse">
+          Details<img src="{{HOSTNAME}}/img/icon-arrow-down.png">
+        </span>
+        <div class="button">
+          <a href="{{REMIX_URL}}" target="_blank" class="button-remix make-link"><span>Remix</span></a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+  (function loadWithJquery($) {
+    var LIMIT = 100000;
+
+    if(!$) {
+      var script = document.createElement("script");
+      script.src = "//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js";
+      script.onload = function() {
+        loadWithJquery(window.jQuery);
+      };
+      document.head.appendChild(script);
+      return;
+    }
+
+    // continue in the knowledge that we have jquery available
+    var img_path = '{{HOSTNAME}}/img/',
+        img_up = 'icon-arrow-up.png',
+        img_down = 'icon-arrow-down.png',
+        animationSpeed = 200,
+        $toggle = $('.expand-collapse'),
+        $details = $('.make-details'),
+        $arrow = $('img', $toggle),
+        nav_open = false;
+
+    var options = {
+      duration: animationSpeed,
+      easing: 'linear'
+    };
+
+    var toggleNav = function(e) {
+      e.preventDefault();
+      $details.slideToggle(options);
+      if (nav_open === true) {
+        nav_open = false;
+        $arrow.attr('src', img_path + img_down);
+      }
+      else {
+        nav_open = true;
+        $arrow.attr('src', img_path + img_up);
+      }
+    };
+
+    $toggle.on('click', toggleNav);
+  }(window.jQuery));
+  </script>

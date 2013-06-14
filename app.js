@@ -1,269 +1,210 @@
+// New Relic Server monitoring support
+if ( process.env.NEW_RELIC_ENABLED ) {
+  require( "newrelic" );
+}
+
 /**
  * Module dependencies.
  */
+var ajax = require('request'),
+    async = require('async'),
+    bleach = require( "./lib/bleach"),
+    db = require('./lib/database'),
+    express = require('express'),
+    fs = require('fs'),
+    habitat = require('habitat'),
+    helmet = require( "helmet" ),
+    makeAPI = require('./lib/makeapi'),
+    nunjucks = require('nunjucks'),
+    path = require('path'),
+    persona = require('express-persona'),
+    routes = require('./routes'),
+    utils = require('./lib/utils');
 
-var express = require('express')
-  , nunjucks = require('nunjucks')
-  , routes = require('./routes')
-  , user = require('./routes/user')
-  , http = require('http')
-  , path = require('path')
-  , ajax = require('request')
-  , sanitize = require('htmlsanitizer')
-  , sqlite = require('sqlite3')
-  , async = require('async');
+habitat.load();
 
-var app = express(),
-    nunjucksEnv,
-    // whitelist for HTML5 elements
-    ALLOWED_TAGS = [
-      "!doctype", "html", "body", "a", "abbr", "address", "area", "article",
-      "aside", "audio", "b", "base", "bdi", "bdo", "blockquote", "body", "br",
-      "button", "canvas", "caption", "cite", "code", "col", "colgroup",
-      "command", "datalist", "dd", "del", "details", "dfn", "div", "dl", "dt",
-      "em", "embed", "fieldset", "figcaption", "figure", "footer", "form",
-      "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hgroup", "hr",
-      "html", "i", "iframe", "img", "input", "ins", "keygen", "kbd", "label",
-      "legend", "li", "link", "map", "mark", "menu", "meta", "meter", "nav", 
-      "noscript", "object", "ol", "optgroup", "option", "output", "p", "param",
-      "pre", "progress", "q", "rp", "rt", "s", "samp", "section", "select",
-      "small", "source", "span", "strong", "style", "sub", "summary", "sup", 
-      "table", "tbody", "td", "textarea", "tfoot", "th", "thead", "time",
-      "title", "tr", "track", "u", "ul", "var", "video", "wbr"
-    ],
-    // whitelist for HTML5 element attributes.
-    ALLOWED_ATTRS = {
-      "meta": ["charset", "name", "content"],
-      "*": ["class", "id", "style"],
-      "img": ["src", "width", "height"],
-      "a": ["href"],
-      "base": ["href"],
-      "iframe": ["src", "width", "height", "frameborder", "allowfullscreen"],
-      "video": ["controls", "autoplay", "preload", "loop", "mediaGroup", "src",
-                "poster", "muted", "width", "height"],
-      "audio": ["controls", "autoplay", "preload", "loop", "src"],
-      "source": ["src", "type"],
-      "link": ["href", "rel", "type"]
-    };
+var appName = "thimble",
+    app = express(),
+    env = new habitat(),
 
-// all environments
-app.set('port', process.env.PORT || 3000);
-app.set('views', __dirname + '/views');
-app.set('view engine', 'jade');
+    /**
+      We're using two databases here: the first is our normal database, the second is
+      a legacy database with old the original thimble.webmaker.org data from 2012/2013
+      prior to the webmaker.org reboot. This database is a read-only database, with
+      remixes/edits being published to the new database instead. This is intended as
+      a short-term solution until all the active "old thimble" projects have been
+      migrated by their owners/remixers.
+    **/
+    databaseAPI = db('thimbleproject', env.get('CLEARDB_DATABASE_URL') || env.get('DB')),
+    legacyDatabaseAPI = db('legacyproject', env.get('LEGACY_DB') || env.get('DB')),
+
+    middleware = require('./lib/middleware')(env),
+    make = makeAPI(env.get('make')),
+    nunjucksEnv = new nunjucks.Environment(new nunjucks.FileSystemLoader('views'));
+
+nunjucksEnv.express(app);
+
+// Express settings
 app.use(express.favicon());
-app.use(express.logger('dev'));
+app.use(express.logger("dev"));
+if (!!env.get("FORCE_SSL") ) {
+  app.use(helmet.hsts());
+  app.enable("trust proxy");
+}
+app.use(express.compress());
 app.use(express.bodyParser());
-app.use(express.methodOverride());
+app.use(express.cookieParser());
+app.use(express.cookieSession({
+  key: "thimble.sid",
+  secret: env.get("SESSION_SECRET"),
+  cookie: {
+    maxAge: 2678400000, // 31 days. Persona saves session data for 1 month
+    secure: !!env.get("FORCE_SSL")
+  },
+  proxy: true
+}));
+app.use(express.csrf());
 app.use(app.router);
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(path.join(__dirname, 'learning_projects')));
+app.use(express.static(path.join(__dirname, 'templates')));
+app.use( function( err, req, res, next) {
+  res.send( 500, err );
+});
 
-// development only
-if ('development' == app.get('env')) {
-  app.use(express.errorHandler());
-}
+// what do we do when a project request comes in by id (:id route)?
+app.param('id', function(req, res, next, id) {
+  databaseAPI.find(id, function(err, result) {
+    if (err) { return next( err ); }
+    if (!result) { return next( new Error("404 Not Found") ); }
+    req.pageData = result.sanitizedData;
+    req.tutorialUrl = result.url;
+    next();
+  });
+});
 
-// Tell express where to find our templates.
-nunjucksEnv = new nunjucks.Environment(new nunjucks.FileSystemLoader('views'));
-nunjucksEnv.express(app);
+// what do we do when a project request comes in by id (:id route)?
+app.param('oldid', function(req, res, next, oldid) {
+  legacyDatabaseAPI.findOld(oldid, function(err, result) {
+    if (err) { return next( err ); }
+    if (!result) { return next( new Error("404 Not Found") ); }
+    req.pageData = result.html;
+    next();
+  });
+});
 
-// base dir lookup
-app.get('/', function(req, res) {
-  res.render('index.html');
+// what do we do when a project request comes in by name (:name route)?
+app.param('name', function(req, res, next, name) {
+  req.pageToLoad = '/' + name + '.html';
+  next();
+});
+
+// Main page
+app.get('/',
+        middleware.setDefaultPublishOperation,
+        routes.index(utils, env, appName));
+
+// Remix a published page (from db)
+// Even if this is "our own" page, this URL
+// will effect a new page upon publication.
+app.get('/project/:id/remix',
+        middleware.setDefaultPublishOperation,
+        routes.index(utils, env, appName));
+
+// Legacy counterpart
+app.get('/p/:oldid/remix',
+        middleware.setDefaultPublishOperation,
+        routes.index(utils, env, appName));
+
+// Edit a published page (from db).
+// If this is not "our own" page, this will
+// effect a new page upon publication.
+// Otherwise, the edit overwrites the
+// existing page instead.
+app.get('/project/:id/edit',
+        middleware.setPublishAsUpdate,
+        routes.index(utils, env, appName));
+
+// Legacy counterpart
+app.get('/p/:oldid/edit',
+        // this will be a remix, since there's no new
+        // data to "edit"; old thimble was anonymous.
+        middleware.setDefaultPublishOperation,
+        routes.index(utils, env, appName));
+
+// view a published page (from db)
+app.get('/project/:id', function(req, res) {
+  res.send(req.pageData);
+});
+
+// Legacy route for new content
+// See: https://bugzilla.mozilla.org/show_bug.cgi?id=874986
+app.get('/en-US/projects/:name/edit',
+        middleware.setDefaultPublishOperation,
+        routes.index(utils, env, appName));
+
+// Legacy route for old content
+// see: https://bugzilla.mozilla.org/show_bug.cgi?id=880768
+app.get('/p/:oldid',function(req, res) {
+  res.send(req.pageData);
+});
+
+// learning project listing
+app.get('/projects', function(req, res) {
+  fs.readdir('learning_projects', function(err, files){
+    if(err) { res.send(404); return; }
+    var projects = [];
+    files.forEach( function(e) {
+      var id = e.replace('.html','');
+      projects.push({
+        title: id,
+        remix: "/projects/" + id + "/",
+        view: "/" + id + ".html"
+      });
+    });
+    res.render('gallery.html', {location: "projects", title: 'Learning Projects', projects: projects});
+  });
 });
 
 // learning project lookup
-app.get('/projects/:name', function(req, res) {
-  var tpl = nunjucksEnv.getTemplate('learning_projects/' + req.params.name + '.html' );
-  var content = tpl.render({HTTP_STATIC_URL: '/learning_projects/'}).replace(/'/g, '\\\'').replace(/\n/g, '\\n');
-  res.render('index.html', {template: content, HTTP_STATIC_URL: '/'});
-});
+app.get('/projects/:name',
+        middleware.setDefaultPublishOperation,
+        routes.index(utils, env, appName));
 
-// lookup for remixing someone's project (from db)
-app.get("/remix/:id/edit", function(req, res) {
-  async.waterfall([
-    // do we have a project to work with?
-    function(callback) {
-      console.error("1");
-      var id = (req.params.id | 0);
-      if(id === 0) { return callback("request did not point to a project"); }
-      callback(null, id);
-    },
-
-    // try to get to our database
-    function(id, callback) {
-      console.error("2");
-      var db = new sqlite.Database('thimble.sqlite', function(err) {
-        if(err!=null) { return callback(err); }
-        callback(null, id, db);
-      });
-    },
-
-    // try to write the raw and sanitized data to the DB
-    function(id, db, callback) {
-      console.error("3");
-      db.serialize(function() {
-        db.get("SELECT * FROM test WHERE rowid = ?", [id], function(err, row) {
-          if(err!=null) { return callback(err); }
-          callback(null, db, row);
-        });
-      });
-    },
-
-    // get our new row number
-    function(db, row, callback) {
-      console.error("4 - " + row.raw);
-      db.close();
-      callback(null, row.raw);
-    }
-  ],
-
-  // final callback
-  function (err, content) {
-   console.error("end");
-    if(err) { res.send("could not publish, "+err); }
-    else if(!content) { res.send("could not publish: content was empty"); }
-    else {
-      content = content.replace(/'/g, '\\\'').replace(/\n/g, '\\n');
-      res.render('index.html', {template: content, HTTP_STATIC_URL: '/'});
-    }
-    res.end();
-  });
-});
-
-// get a published page (from db)
-app.get("/remix/:id", function(req, res) {
-  async.waterfall([
-    // do we have a project to work with?
-    function(callback) {
-      console.error("1");
-      var id = (req.params.id | 0);
-      if(id === 0) { return callback("request did not point to a project"); }
-      callback(null, id);
-    },
-
-    // try to get to our database
-    function(id, callback) {
-      console.error("2");
-      var db = new sqlite.Database('thimble.sqlite', function(err) {
-        if(err!=null) { return callback(err); }
-        callback(null, id, db);
-      });
-    },
-
-    // try to write the raw and sanitized data to the DB
-    function(id, db, callback) {
-      console.error("3");
-      db.serialize(function() {
-        db.get("SELECT * FROM test WHERE rowid = ?", [id], function(err, row) {
-          if(err!=null) { return callback(err); }
-          callback(null, db, row);
-        });
-      });
-    },
-
-    // get our new row number
-    function(db, row, callback) {
-      console.error("4 - " + row.raw);
-      db.close();
-      callback(null, row.raw);
-    }
-  ],
-
-  // final callback
-  function (err, result) {
-   console.error("end");
-    if(err) { res.send("could not publish, "+err); }
-    else { res.send(result); }
-    res.end();
-  });
-});
+// project template lookups
+app.get('/templates/:name',
+        middleware.setDefaultPublishOperation,
+        routes.index(utils, env, appName));
 
 // publish a remix (to the db)
-app.post('/publish', function(req, res) {
-  async.waterfall([
+app.post('/publish',
+         middleware.checkForAuth,
+         middleware.checkForPublishData,
+         middleware.checkPageOperation(databaseAPI),
+         bleach.bleachData(env.get("BLEACH_ENDPOINT")),
+         middleware.saveData(databaseAPI, env.get('HOSTNAME')),
+         middleware.rewritePublishId(databaseAPI),
+         middleware.generateUrls(appName, env.get('S3'), env.get('USER_SUBDOMAIN')),
+         middleware.finalizeProject(nunjucksEnv, env),
+         middleware.publishData(env.get('S3')),
+         middleware.rewriteUrl,
+         // update the database now that we have a S3-published URL
+         middleware.saveUrl(databaseAPI, env.get('HOSTNAME')),
+         middleware.getRemixedFrom(databaseAPI, make),
+         middleware.publishMake(make),
+  function(req, res) {
+    res.json({
+      'published-url': req.publishedUrl,
+      'remix-id': req.publishId
+    });
+  }
+);
 
-    // do we have actual data to publish?
-    function(callback) {
-      console.error("1");
-      var data = ( req.body.html ? req.body.html : "" );
-      if(data=="") { return callback("request had no publishable content"); }
-      callback(null, data);
-    },
-
-    // try to sanitize the raw data
-    function(data, callback) {
-      console.error("2");
-      sanitize( {
-        endpoint: 'http://localhost:5000',
-        text: data,
-        tags: ALLOWED_TAGS,
-        attributes: ALLOWED_ATTRS,
-        styles: [],
-        strip: false,
-        strip_comments: false,
-        parse_as_fragment: false
-      }, function(err, sanitizedData) {
-        if(err) { return callback(err); }
-        callback(null, data, sanitizedData);
-      });
-    },
-
-    // try to get to our database
-    function(rawData, sanitizedData, callback) {
-      console.error("3");
-      var db = new sqlite.Database('thimble.sqlite', function(err) {
-        if(err!=null) { return callback(err); }
-        callback(null, db, rawData, sanitizedData);
-      });
-    },
-
-    // try to write the raw and sanitized data to the DB
-    function(db, rawData, sanitizedData, callback) {
-      console.error("4");
-      db.serialize(function() {
-        // replace with http://stackoverflow.com/questions/1601151/how-do-i-check-in-sqlite-whether-a-table-exists or like
-        db.run("CREATE TABLE test (raw TEXT, sanitized TEXT)",function(err) {
-          // don't care about errors here, atm, since it'll be of the
-          // type "table already exists", so that's fine.
-        });
-        db.run("INSERT INTO test VALUES (?, ?)", [rawData, sanitizedData], function(err) {
-          if(err!=null) { return callback(err); }
-          callback(null, db);
-        });
-      });
-    },
-
-    // get our new row number
-    function(db, callback) {
-      console.error("5");
-      // NOTE: this totally doesn't work in async concurrent settings, so we need to get
-      // the rowid from the actual insert at some point (way) before deploy.
-      db.get("SELECT count(*) as totalCount FROM test", function(err, row) {
-        if(err!=null) { return callback(err); }
-        callback(null, db, row.totalCount);
-      });
-    },
-
-    // form a "load from..." URL based on our row number
-    function(db, resultId, callback) {
-      db.close();
-      var result = { 'published-url' : 'http://www.example.com/' + resultId };
-      callback(null, result);
-    }
-  ],
-
-  // final callback
-  function (err, result) {
-   console.error("end");
-    if(err) { res.send("could not publish, "+err); }
-    else { res.json(result); }
-    res.end();
-  });
-});
+// WEBMAKER SSO
+persona(app, {audience: env.get('AUDIENCE')});
+require('webmaker-loginapi')(app, env.get('LOGINAPI'));
 
 // run server
-http.createServer(app).listen(app.get('port'), function(){
-  console.log('Express server listening on port ' + app.get('port'));
+app.listen(env.get("PORT"), function(){
+  console.log('Express server listening on ' + env.get("HOSTNAME"));
 });
-

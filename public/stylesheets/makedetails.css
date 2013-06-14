@@ -1,0 +1,180 @@
+/*********************************************************
+ * MAKE DETAILS
+ */
+body {
+  margin: 0;
+  padding: 0;
+}
+.make-details-page {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999999;
+}
+.make-link {
+  color: #27aae1;
+  text-decoration: none;
+}
+.make-link:hover {
+  color: #54bce7;
+  text-decoration: underline;
+}
+.make-details-page .wrapper {
+  position: relative;
+  width: 100%;
+  margin: 0 auto;
+}
+.make-bar {
+  background: #e3eaee;
+  height: 37px;
+  border-top: 1px solid #cdd9e1;
+  border-bottom: 1px solid #d3dee4;
+  padding: 0 10px;
+  width: 100%;
+  z-index: 5;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.1);
+  font-family: "Open Sans", "Helvetica Neue", sans-serif;
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  -ms-box-sizing: border-box;
+  box-sizing: border-box;
+}
+.make-bar .button {
+  margin-top: 2px;
+  color: white;
+  background: #3fb58e;
+  list-style: none;
+  float: right;
+  font-size: 13px;
+  text-align: center;
+  border: 1px solid #FFF;
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  -ms-box-sizing: border-box;
+  box-sizing: border-box;
+}
+.make-bar .button a {
+  color: #FFF;
+  padding: 0.4em 1em 0.4em;
+}
+.make-bar .button:hover {
+  background: #60c7a5;
+}
+.make-bar .logospan {
+  width: 180px;
+  height: 35px;
+}
+.make-bar .logospan img {
+  margin-top: 4px;
+  height: 32px;
+}
+.make-bar .logospan .made-with {
+  font-size: 13px;
+  color: #787878;
+  position: relative;
+  display: inline-block;
+  left: 5px;
+  bottom: 13px;
+}
+.make-bar .expand-collapse {
+  color: #27aae1;
+  position: absolute;
+  right: 180px;
+  left: 180px;
+  top: 0;
+  bottom: 0;
+  text-align: center;
+  vertical-align: top;
+  font-size: 18px;
+  padding-top: 6px;
+  cursor: pointer;
+  *zoom: 1;
+  display: inline-block;
+}
+.make-bar .expand-collapse:hover {
+  color: #54bce7;
+}
+.make-bar .expand-collapse:before,
+.make-bar .expand-collapse:after {
+  content: "";
+  display: table;
+}
+.make-bar .expand-collapse:after {
+  clear: both;
+}
+.make-bar .expand-collapse:after {
+  content: '.';
+  display: block;
+  clear: both;
+  visibility: hidden;
+  line-height: 0;
+  height: 0;
+}
+.make-bar .expand-collapse .toggle-ec {
+  width: 100%;
+}
+.make-bar .expand-collapse img {
+  margin-left: 2px;
+  margin-bottom: 2px;
+}
+.make-bar .make-social {
+  margin-left: 9px;
+  vertical-align: top;
+  *zoom: 1;
+  display: inline-block;
+}
+.make-bar .make-social:before,
+.make-bar .make-social:after {
+  content: "";
+  display: table;
+}
+.make-bar .make-social:after {
+  clear: both;
+}
+.make-bar .make-social:after {
+  content: '.';
+  display: block;
+  clear: both;
+  visibility: hidden;
+  line-height: 0;
+  height: 0;
+}
+.make-details {
+  height: 300px;
+}
+.make-details.hide {
+  display: none;
+}
+#details-iframe {
+  border: none;
+  width: 100%;
+  height: 100%;
+}
+.button-remix {
+  background-repeat: no-repeat;
+  background-position: left 3px;
+  display: block;
+  margin-left: 5px;
+  margin-top: 2px;
+}
+.button-remix span {
+  position: relative;
+  bottom: 2px;
+  left: 5px;
+}
+.button-remix {
+  background-image: url("../img/icon-Remix.png");
+}
+
+
+@media (max-width: 640px) {
+ .make-bar .logospan .made-with {
+    display: none;
+  }
+  .make-bar .expand-collapse {
+    left: 50px;
+    right: 80px;
+  }
+}
+

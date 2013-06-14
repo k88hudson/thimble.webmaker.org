@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="/stylesheets/gallery.css">
+  </head>
+  <body>
+    <h3>{{title}}</h3>
+    <ul>
+    {% for project in projects %}
+      <li><span>{{project.title}}</span><a href='{{project.view}}'>view</a><a href='{{project.remix}}'>remix</a></li>
+    {% endfor %}
+    </ul>
+  </body>
+</html>
